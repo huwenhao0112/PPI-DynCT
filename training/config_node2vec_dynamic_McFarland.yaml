@@ -1,0 +1,88 @@
+# =============================================================================
+# config_node2vec_dynamic_McFarland.yaml
+# =============================================================================
+# Node2Vec + Dynamic Cell-type Embedding for McFarland dataset
+# =============================================================================
+
+project_dir: "/root/autodl-tmp/Cell-Type-Specific-Graphs-main"
+data_path: "Data/"
+dataset_h5ad: "McFarland_processed.h5ad"
+graphs_path: "graphs/"
+graphs_data: "McFarland"
+cells_pkl: "cells_McFarland.pkl"  # switch to cells_McFarland_corrected.pkl when required
+SMILES_feat: "SMILES_feat_all_datasets.csv"
+
+save_path_results: "Results/"
+save_path_models: "model_checkpoints/"
+
+params:
+  hidden_channels: 64     # 减小以节省显存
+  weight_decay: 0.00001
+  in_head: 1              # 减小以节省显存
+  learning_rate: -3
+  num_epochs: 200
+  batch_size: 256         # 减小以解决显存不足问题（双分支模型需要更小 batch）
+
+# McFarland dataset: cancer cell lines with multi-drug perturbations
+testing_cell_type: ['BICR31', 'COLO680N', 'LNCAPCLONEFGC', 'RCC10RGB', 'TEN']
+testing_drugs: ['Navitoclax', 'Idasanutlin', 'JQ1', 'Bortezomib']
+#'Trametinib','Everolomus','Dabrafenib'
+multi_pert: true   # McFarland has multiple drugs
+
+seed: 42
+
+# =============================================================================
+# Node2Vec Configuration
+# =============================================================================
+node2vec:
+  dim: 64
+  mode: global            # global | local | both
+  normalize: zscore      # zscore | minmax | none
+  walk_length: 40
+  context_size: 20
+  walks_per_node: 10
+  p: 1.0
+  q: 1.0
+  num_epochs: 10
+  lr: 0.01
+  batch_size: 256
+  ppi_dir: Data/PPI_data_v2/McFarland
+  use_expr_stats: false
+
+# =============================================================================
+# Dynamic Cell-type Embedding Configuration
+# =============================================================================
+dynamic_celltype:
+  dynamic_scale_init: 0.5
+  pert_dim: 124
+
+# =============================================================================
+# Readout Configuration
+# =============================================================================
+readout:
+  mode: max        # max | stat | residual_stat
+  dropout: 0.0
+
+# =============================================================================
+# PPI Configuration
+# =============================================================================
+ppi:
+  enabled: false
+  string_links_path: "9606.protein.links.v11.5.txt"
+  string_info_path: "9606.protein.info.v11.5.txt"
+  string_alias_path: "9606.protein.aliases.v11.5.txt"
+  species_prefix: "9606."
+  source: "string"
+  min_score: 400
+  top_quantile: 0.95
+  fusion_entropy_beta: 0.05
+
+# =============================================================================
+# Model Variant
+# =============================================================================
+# dynamic_single_n2v       → Single-branch GNN + Node2Vec + Dynamic
+# dynamic_dual_n2v         → Dual-branch GNN + Node2Vec + Dynamic (recommended)
+# dynamic_dual_n2v_global  → Dual-branch (global fusion) + Node2Vec + Dynamic
+# dynamic_dual_n2v_concat  → Dual-branch (concat fusion) + Node2Vec + Dynamic
+# =============================================================================
+model_variant: "dynamic_single_n2v"
