@@ -1,0 +1,91 @@
+# ============================================================================
+# config_dynamic_celltype_McFarland.yaml
+# ============================================================================
+# Configuration for training_dynamic_celltype_McFarland.py
+# Perturbation-conditioned Dynamic Cell-type Embedding on McFarland dataset
+#
+# McFarland dataset: 5 cell lines, 6 drugs
+# Hold out BICR31 cell line as unseen cell type → all its drugs become OOD
+#
+# Innovation: Dynamic Cell-type Embedding
+# ----------------------------------------
+# Static model:  h_c = GNN(G_c^control)
+# Dynamic model: h_{c,p} = h_c + γ_{c,p} ⊙ Δh_{c,p}
+#
+# McFarland has 6 drugs per cell type → dynamic embedding very impactful.
+# The same cell type (BICR31) faces multiple unseen drugs, so the model
+# can leverage perturbation-conditioned adjustments even for unseen drugs.
+#
+# Run with different model variants:
+#   python training/training_dynamic_celltype_McFarland.py --model_variant dynamic_dual
+#   python training/training_dynamic_celltype_McFarland.py --model_variant dynamic_single
+#   python training/training_dynamic_celltype_McFarland.py --model_variant baseline
+# ============================================================================
+
+project_dir: "/root/autodl-tmp/Cell-Type-Specific-Graphs-main"
+data_path: "Data/"
+dataset_h5ad: "McFarland_processed.h5ad"
+graphs_path: "graphs/"
+graphs_data: "McFarland"
+SMILES_feat: "SMILES_feat_all_datasets.csv"
+
+save_path_results: "Results/"
+save_path_models: "model_checkpoints/"
+
+params:
+  hidden_channels: 64
+  weight_decay: 0.00001
+  in_head: 1
+  learning_rate: -3
+  num_epochs: 200
+  num_runs: 3
+  batch_size: 64
+
+# McFarland: 5 cell lines, 6 drugs
+# Hold out one entire cell line (BICR31) as unseen cell type
+testing_cell_type: ['BICR31', 'COLO680N', 'LNCAPCLONEFGC', 'RCC10RGB', 'TEN']
+testing_drugs: ['Navitoclax', 'Idasanutlin']   # Navitoclax, Idasanutlin, JQ1, Bortezomib
+multi_pert: True
+
+# ============================================================================
+# Dynamic Cell-type Embedding Configuration
+# ============================================================================
+dynamic_celltype:
+  # McFarland has 6 drugs per cell type → dynamic adjustment is very useful
+  dynamic_scale_init: 0.5
+  pert_dim: 124
+
+readout:
+  mode: max        # max | stat | residual_stat
+  dropout: 0.0
+
+# ============================================================================
+# Node Feature Configuration
+# ============================================================================
+node_features:
+  mode: ppi_informed
+  use_detection_rate: true
+  use_dispersion: true
+  use_coexpr_degree: true
+  use_ppi_degree: true
+  normalize: zscore
+  ppi_score_scale: 1000.0
+
+# ============================================================================
+# Dual-Prior (PPI) Configuration
+# ============================================================================
+ppi:
+  enabled: false
+  string_links_path:  "9606.protein.links.v11.5.txt"
+  string_info_path:   "9606.protein.info.v11.5.txt"
+  string_alias_path:  "9606.protein.aliases.v11.5.txt"
+  species_prefix:     "9606."
+  source:             "string"
+  min_score:          400
+  top_quantile:       0.95
+  fusion_entropy_beta: 0.05
+
+# ============================================================================
+# Model Variant
+# ============================================================================
+model_variant: "dynamic_dual"
