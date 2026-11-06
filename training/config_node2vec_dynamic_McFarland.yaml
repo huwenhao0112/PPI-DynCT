@@ -4,7 +4,7 @@
 # Node2Vec + Dynamic Cell-type Embedding for McFarland dataset
 # =============================================================================
 
-project_dir: "/root/autodl-tmp/Cell-Type-Specific-Graphs-main"
+project_dir: "."
 data_path: "Data/"
 dataset_h5ad: "McFarland_processed.h5ad"
 graphs_path: "graphs/"
@@ -86,3 +86,4 @@ ppi:
 # dynamic_dual_n2v_concat  → Dual-branch (concat fusion) + Node2Vec + Dynamic
 # =============================================================================
 model_variant: "dynamic_single_n2v"
+
