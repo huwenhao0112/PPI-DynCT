@@ -112,6 +112,7 @@ from training.model_node2vec_dynamic import (
     DynamicCellTypeDualPriorGNNNode2VecGlobal,
     DynamicCellTypeDualPriorGNNNode2VecConcat,
     FusionEntropyLoss,
+    modulator_parameter_count,
 )
 
 if torch.cuda.is_available():
@@ -210,6 +211,14 @@ ABLATION_SPECS = {
         "use_dynamic": True,
         "node2vec_mode": "global",
     },
+}
+
+# Mechanism-specific comparison.  These variants leave the graph prior,
+# readout, predictor, split, and optimizer unchanged.
+MECHANISM_SPECS = {
+    "full_dynamic": "dynamic",
+    "retrained_static": "static",
+    "capacity_mlp": "capacity_mlp",
 }
 
 
@@ -703,8 +712,9 @@ def train_node2vec_dynamic(
         scheduler.step()
 
         if epoch % 10 == 0:
-            if hasattr(model, 'dynamic_modulator'):
-                scale_val = model.dynamic_modulator.dynamic_scale.item()
+            scale = getattr(getattr(model, 'dynamic_modulator', None), 'dynamic_scale', None)
+            if scale is not None:
+                scale_val = scale.item()
                 print(f"Epoch {epoch}, train loss: {train_epoch_loss:.6f}  |  dynamic_scale: {scale_val:.4f}")
             else:
                 print(f"Epoch {epoch}, train loss: {train_epoch_loss:.6f}")
@@ -913,6 +923,16 @@ if __name__ == '__main__':
             "This overrides model_variant, raw ppi.enabled, and node2vec_mode."
         ),
     )
+    parser.add_argument(
+        '--mechanism_variant',
+        choices=list(MECHANISM_SPECS),
+        default=None,
+        help=(
+            "Matched dynamic-mechanism comparison: full_dynamic, "
+            "retrained_static, or capacity_mlp. It changes only the "
+            "cell/perturbation context modulator."
+        ),
+    )
     parser.add_argument('--seed', type=int, default=None,
                         help='Training seed; overrides config seed.')
     parser.add_argument('--node2vec_seed', type=int, default=None,
@@ -951,6 +971,8 @@ if __name__ == '__main__':
                         help='Override graph readout mode.')
     parser.add_argument('--collect_dynamic_mechanisms', action='store_true',
                         help='Export dynamic counterfactuals and gamma/delta_h/residual.')
+    parser.add_argument('--export_validation_bundle', action='store_true',
+                        help='Export condition-mean observed/predicted deltas for cross-variant analysis.')
     parser.add_argument('--mechanism_swaps', type=int, default=8,
                         help='Wrong-drug and wrong-cell donors per condition.')
     parser.add_argument('--load_checkpoint', type=str, default=None,
@@ -962,6 +984,12 @@ if __name__ == '__main__':
     parser.add_argument('--cells_pkl', type=str, default=None,
                         help='Override cells pickle; use corrected-control data for formal runs.')
     args = parser.parse_args()
+
+    if args.ablation_variant is not None and args.mechanism_variant is not None:
+        raise ValueError(
+            "--ablation_variant and --mechanism_variant are separate protocols "
+            "and cannot be combined in one run"
+        )
 
     config = load_config(args.config)
 
@@ -1039,6 +1067,7 @@ if __name__ == '__main__':
     model_variant = config.get('model_variant', 'dynamic_dual_n2v')
     if args.model_variant is not None:
         model_variant = args.model_variant
+    modulator_type = "dynamic"
     use_dynamic = True
     if args.ablation_variant is not None:
         ablation_spec = ABLATION_SPECS[args.ablation_variant]
@@ -1046,6 +1075,10 @@ if __name__ == '__main__':
         ppi_enabled = ablation_spec['ppi_enabled']
         use_dynamic = ablation_spec['use_dynamic']
         node2vec_mode = ablation_spec['node2vec_mode']
+        modulator_type = "dynamic" if use_dynamic else "static"
+    if args.mechanism_variant is not None:
+        modulator_type = MECHANISM_SPECS[args.mechanism_variant]
+        use_dynamic = modulator_type != "static"
 
     ppi_feature_enabled = node2vec_mode != 'none'
 
@@ -1069,6 +1102,7 @@ if __name__ == '__main__':
     print(f"PPI feature enabled:  {ppi_feature_enabled}")
     print(f"Raw PPI graph branch: {ppi_enabled}")
     print(f"Dynamic enabled:      {use_dynamic}")
+    print(f"Context modulator:    {modulator_type}")
     print(f"Training seed:        {seed}")
     print(f"Node2Vec seed:        {node2vec_seed}")
     print(f"Dynamic scale init:   {dynamic_scale_init}")
@@ -1387,6 +1421,7 @@ if __name__ == '__main__':
             readout_dropout=readout_dropout,
             node_feat_dim=node_feat_dim,
             use_dynamic=use_dynamic,
+            modulator_type=modulator_type,
         )
 
     elif model_variant == "dynamic_dual_n2v":
@@ -1405,6 +1440,7 @@ if __name__ == '__main__':
             readout_dropout=readout_dropout,
             node_feat_dim=node_feat_dim,
             use_dynamic=use_dynamic,
+            modulator_type=modulator_type,
         )
 
     elif model_variant == "dynamic_dual_n2v_global":
@@ -1422,6 +1458,7 @@ if __name__ == '__main__':
             readout_dropout=readout_dropout,
             node_feat_dim=node_feat_dim,
             use_dynamic=use_dynamic,
+            modulator_type=modulator_type,
         )
 
     elif model_variant == "dynamic_dual_n2v_concat":
@@ -1439,6 +1476,7 @@ if __name__ == '__main__':
             readout_dropout=readout_dropout,
             node_feat_dim=node_feat_dim,
             use_dynamic=use_dynamic,
+            modulator_type=modulator_type,
         )
 
     else:
@@ -1483,7 +1521,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------
     # Save model
     # -------------------------------------------------------------------------
-    variant_label = args.ablation_variant or model_variant
+    variant_label = args.mechanism_variant or args.ablation_variant or model_variant
     variant_tag = f"_seed{seed}_n2v{node2vec_dim}d_{node2vec_mode}_{variant_label}"
     if ppi_enabled:
         variant_tag += "_ppi"
@@ -1560,16 +1598,29 @@ if __name__ == '__main__':
         else Path(full_save_path_results) / f"run{variant_tag}"
     )
     summary_dir.mkdir(parents=True, exist_ok=True)
+    if args.export_validation_bundle:
+        from dynamic_mechanism_validation import collect_prediction_bundle
+        validation_path = collect_prediction_bundle(
+            model=model, ood_loader=ood_loader,
+            cell_type_network=cell_type_network, ppi_network=ppi_network,
+            adata=adata, deg_indices=degs_dict,
+            output_npz=summary_dir / 'validation_prediction_bundle.npz',
+            device=device, seed=seed, run_id=summary_dir.name,
+            mechanism_variant=args.mechanism_variant or 'custom',
+        )
+        print(f'Validation prediction bundle: {validation_path}')
     if args.collect_dynamic_mechanisms:
-        if not use_dynamic:
-            raise ValueError('--collect_dynamic_mechanisms requires a dynamic model')
+        if modulator_type != 'dynamic':
+            raise ValueError('--collect_dynamic_mechanisms requires --mechanism_variant full_dynamic')
         from dynamic_mechanism_validation import collect_mechanism_bundle
         mechanism_path = collect_mechanism_bundle(
             model=model, ood_loader=ood_loader,
             cell_type_network=cell_type_network, ppi_network=ppi_network,
             adata=adata,
             output_npz=summary_dir / 'dynamic_mechanism_bundle.npz',
+            donor_loader=train_dataloader, deg_indices=degs_dict,
             device=device, n_swaps=args.mechanism_swaps, seed=seed,
+            run_id=summary_dir.name,
         )
         print(f'Dynamic mechanism bundle: {mechanism_path}')
     metric_rows = mean_metric_rows + std_metric_rows
@@ -1584,6 +1635,8 @@ if __name__ == '__main__':
             "ppi_enabled": bool(ppi_enabled),
             "ppi_feature_enabled": bool(ppi_feature_enabled),
             "dynamic_enabled": bool(use_dynamic),
+            "mechanism_variant": args.mechanism_variant or "custom",
+            "modulator_type": modulator_type,
             "node2vec_mode": node2vec_mode,
         })
 
@@ -1610,6 +1663,11 @@ if __name__ == '__main__':
         "ppi_enabled": bool(ppi_enabled),
         "ppi_feature_enabled": bool(ppi_feature_enabled),
         "dynamic_enabled": bool(use_dynamic),
+        "mechanism_variant": args.mechanism_variant,
+        "modulator_type": modulator_type,
+        "modulator_parameter_count": modulator_parameter_count(
+            params['hidden_channels'], modulator_type,
+        ),
         "node2vec_mode": node2vec_mode,
         "node2vec_dim": int(node2vec_dim),
         "node_feature_dim": int(node_feat_dim),
@@ -1627,6 +1685,10 @@ if __name__ == '__main__':
         "num_epochs": int(params["num_epochs"]),
         "batch_size": int(params["batch_size"]),
         "metrics_file": str(metrics_path),
+        "validation_bundle": str(summary_dir / 'validation_prediction_bundle.npz')
+        if args.export_validation_bundle else None,
+        "mechanism_bundle": str(summary_dir / 'dynamic_mechanism_bundle.npz')
+        if args.collect_dynamic_mechanisms else None,
         "model_file": str(model_path),
     }
     with (summary_dir / "run_manifest.json").open("w", encoding="utf-8") as f:
@@ -1641,3 +1703,4 @@ if __name__ == '__main__':
     print(f"  Dynamic cell-type: {model_variant}")
     print(f"  Metrics: {metrics_path}")
     print("=" * 70)
+
