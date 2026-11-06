@@ -41,7 +41,7 @@ PPI-DynCT/
 ├── environment.yml
 ├── LICENSE.txt                         # existing upstream license notice
 ├── Data/                               # processed datasets, STRING files, splits
-├── Data_Notebooks/                     # data preprocessing scripts and notebooks
+├── Data_Process/                      # data preprocessing scripts and notebooks
 ├── graphs/                             # cell-type-specific graph files
 ├── model_checkpoints/                  # saved model weights
 ├── Results/                            # predictions, metrics, and run artifacts
@@ -51,7 +51,7 @@ PPI-DynCT/
 └── train_results/                      # historical experiment outputs
 ```
 
-The suggested logical mapping is `Data_Process/ → Data_Notebooks/`, `models/ → root model modules plus training/model_*.py`, `training/ → training/`, `evaluation/ → training evaluation and baseline scripts`, and `scripts/ → runnable preprocessing and plotting scripts`. No large-scale move is required to use the project.
+The suggested logical mapping is `Data_Process/ → preprocessing scripts and notebooks`, `models/ → root model modules plus training/model_*.py`, `training/ → training/`, `evaluation/ → training evaluation and baseline scripts`, and `scripts/ → runnable preprocessing and plotting scripts`. No large-scale move is required to use the project.
 
 ## 4. Requirements
 
@@ -89,7 +89,7 @@ Data/9606.protein.info.v11.5.txt
 Data/9606.protein.aliases.v11.5.txt
 ```
 
-See [`Data/README.md`](Data/README.md) for the source links, file names, and third-party data usage requirements. The preprocessing scripts and notebooks are in [`Data_Notebooks/`](Data_Notebooks/). The most commonly used graph builders include `build_ppi_network_v2.py`, `Chang_graphs.ipynb`, `McFarland_graphs.ipynb`, and `Nault_graphs.ipynb`.
+See [`Data/Readme.md`](Data/Readme.md) for the source links, file names, and third-party data usage requirements. The preprocessing scripts and notebooks are in [`Data_Process/`](Data_Process/). The most commonly used graph builders include `build_ppi_network_v2.py`, `Chang_graphs.ipynb`, `McFarland_graphs.ipynb`, and `Nault_graphs.ipynb`.
 
 Large expression matrices, graph pickles, checkpoints, and generated results should be distributed through an appropriate data archive or Git LFS when the GitHub repository size limit is a concern.
 
@@ -166,4 +166,6 @@ The repository does not add a new license or citation record here. Before publis
 ## Citation
 
 Citation metadata will be added after the paper title, author list, version, and DOI are finalized.
+
+
 
